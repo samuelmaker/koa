@@ -57,16 +57,40 @@ describe('ctx.redirect(url)', () => {
       ctx.redirect('back')
       assert.strictEqual(ctx.response.header.location, '/')
     })
+
+    it('should reject external and script referrers including URL normalization tricks', () => {
+      for (const referrer of ['https://attacker.example/', '//attacker.example/', '/\\attacker.example/', '/\n/attacker.example/', 'javascript:alert(1)', 'data:text/html,test']) {
+        const ctx = context()
+        ctx.req.headers.referrer = referrer
+        ctx.redirect('back', '/safe')
+        assert.strictEqual(ctx.response.header.location, '/safe')
+      }
+    })
+
+    it('should allow absolute same-origin referrers', () => {
+      const ctx = context()
+      ctx.req.headers.host = 'example.test'
+      ctx.req.headers.referrer = 'http://example.test/account?tab=1#details'
+      ctx.redirect('back')
+      assert.strictEqual(ctx.response.header.location, '/account?tab=1#details')
+    })
   })
 
   describe('when html is accepted', () => {
+    it('should not turn a script URL into an executable link', () => {
+      const ctx = context()
+      ctx.header.accept = 'text/html'
+      ctx.redirect('javascript:alert(1)')
+      assert.strictEqual(ctx.body, 'Redirecting to javascript:alert(1).')
+      assert.ok(!ctx.body.includes('<a'))
+    })
     it('should respond with html', () => {
       const ctx = context()
       const url = 'http://google.com'
       ctx.header.accept = 'text/html'
       ctx.redirect(url)
       assert.strictEqual(ctx.response.header['content-type'], 'text/html; charset=utf-8')
-      assert.strictEqual(ctx.body, `Redirecting to <a href="${url}">${url}</a>.`)
+      assert.strictEqual(ctx.body, `Redirecting to ${url}.`)
     })
 
     it('should escape the url', () => {
@@ -76,7 +100,7 @@ describe('ctx.redirect(url)', () => {
       ctx.redirect(url)
       url = escape(url)
       assert.strictEqual(ctx.response.header['content-type'], 'text/html; charset=utf-8')
-      assert.strictEqual(ctx.body, `Redirecting to <a href="${url}">${url}</a>.`)
+      assert.strictEqual(ctx.body, `Redirecting to ${url}.`)
     })
   })
 
